@@ -1,6 +1,8 @@
 import emoji
 from wordcloud import WordCloud, STOPWORDS
+import pandas as pd
 from urlextract import URLExtract
+from collections import Counter
 extract = URLExtract()
 
 def fetch_stats(selected_user,df):
@@ -29,7 +31,49 @@ def create_wordcloud(selected_user, df):    #wordcloud
     if selected_user != 'Overall':
         df = df[df['user'] == selected_user]
     stopwords = set(STOPWORDS)
-    stopwords.update(['Media', 'omitted', 'https'])  # Add words to exclude
+    stopwords.update(['Media', 'omitted', 'https', 'added', 'left', 'group_notification'])  # Add words to exclude
     wc = WordCloud(width=500, height=500, min_font_size=10, background_color='white', stopwords=stopwords)
     wc = wc.generate(df['message'].str.cat(sep=' '))
     return wc
+
+def emoji_helper(selected_user, df):    #emoji analysis
+    if selected_user != 'Overall':
+        df = df[df['user'] == selected_user]
+    emojis = []
+    for message in df['message']:
+        emojis.extend([c for c in message if c in emoji.EMOJI_DATA])
+    emoji_df = pd.DataFrame(Counter(emojis).most_common(10))
+    emoji_df.columns = ['Emoji', 'Count']
+    return emoji_df
+
+def monthly_timeline(selected_user, df):    #monthly timeline
+    if selected_user != 'Overall':
+        df = df[df['user'] == selected_user]
+    monthly_timeline = df.groupby(['year', 'month_num', 'month']).count()['message'].reset_index()
+    time = []
+    for i in range(monthly_timeline.shape[0]):
+        time.append(monthly_timeline['month'][i] + '-' + str(monthly_timeline['year'][i]))
+    monthly_timeline['time'] = time
+    return monthly_timeline
+
+def daily_timeline(selected_user, df):
+    if selected_user != 'Overall':
+        df = df[df['user'] == selected_user]
+    daily_timeline = df.groupby('only_date').size().reset_index(name='message')  # Count messages per day
+    return daily_timeline
+
+def week_activity_map(selected_user, df):
+    if selected_user != 'Overall':
+        df = df[df['user'] == selected_user]
+    return df['day_name'].value_counts()  # Count messages per day of the week
+
+def month_activity_map(selected_user, df):
+    if selected_user != 'Overall':
+        df = df[df['user'] == selected_user]
+    return df['month'].value_counts()  # Count messages per month
+
+def activity_heatmap(selected_user, df):
+    if selected_user != 'Overall':
+        df = df[df['user'] == selected_user]
+    heatmap = df.pivot_table(index='day_name', columns='period', values='message', aggfunc='count').fillna(0)
+    return heatmap  # Create a pivot table for heatmap
