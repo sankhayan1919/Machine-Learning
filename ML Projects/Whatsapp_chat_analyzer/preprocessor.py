@@ -46,4 +46,9 @@ def preprocess(data):
         else:
             period.append(str(hour) + "-" + str(hour + 1))
     df['period'] = period
+
+    df = df.sort_values(by='date').reset_index(drop=True)
+
     return df
+
+    
