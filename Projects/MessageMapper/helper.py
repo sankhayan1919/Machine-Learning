@@ -1,5 +1,7 @@
 import emoji
 from wordcloud import WordCloud, STOPWORDS
+import matplotlib.pyplot as plt
+import seaborn as sns
 import pandas as pd
 import numpy as np
 from urlextract import URLExtract
@@ -159,4 +161,18 @@ def longest_streaks(df):
     top_days = daily_activity.sort_values(by='message_count', ascending=False).head(10)
 
     return top_days
+
+def text_length_analysis(selected_user, df):
+    if selected_user != 'Overall':
+        df = df[df['user'] == selected_user]
+    
+    # Calculate average message length for each user
+    avg_length = df.groupby('user')['message'].apply(
+        lambda x: sum(len(msg) for msg in x) / len(x)
+    ).reset_index()
+    avg_length.columns = ['User', 'Average Message Length']
+    
+    return avg_length
+
+
 
