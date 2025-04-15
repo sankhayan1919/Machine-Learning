@@ -12,7 +12,6 @@ def fetch_stats(selected_user,df):
     if selected_user != 'Overall':
         df = df[df['user'] == selected_user]
     num_messages = df.shape[0]
-
     num_media_messages = df[df['message'] == '<Media omitted>\n'].shape[0]    #fetch no. of media messages
 
     words = []
@@ -24,6 +23,39 @@ def fetch_stats(selected_user,df):
         stickers = df[df['message'].str.contains('sticker')].shape[0]    #fetch no. of stickers shared
     
     return num_messages, len(words), num_media_messages, len(links), emojis, stickers
+
+def get_chat_age(df):
+    df_filtered = df[df['user'] != 'group_notification']
+    
+    # Sort the DataFrame by date in ascending order and get the first row
+    df_sorted = df_filtered.sort_values('date')
+    first_message_row = df_sorted.iloc[0]
+    first_message_date = first_message_row['date']
+    first_message_text = first_message_row['message']
+    first_message_user = first_message_row['user']
+    
+    # Rest of the function remains the same
+    current_date = pd.Timestamp.now()
+    chat_age = current_date - first_message_date
+    
+    years = chat_age.days // 365
+    remaining_days = chat_age.days % 365
+    months = remaining_days // 30
+    days = remaining_days % 30
+    
+    age_str = ""
+    if years > 0:
+        age_str += f"{years} year{'s' if years > 1 else ''}, "
+    if months > 0:
+        age_str += f"{months} month{'s' if months > 1 else ''}, "
+    age_str += f"{days} day{'s' if days > 1 else ''}"
+    
+    return {
+        'first_message_date': first_message_date.strftime('%d %B %Y'),
+        'chat_age': age_str,
+        'first_message': first_message_text,
+        'first_message_user': first_message_user
+    }
 
 def most_active_users(df):
     x = df['user'].value_counts().head(5)    #fetch top 5 active users
@@ -163,6 +195,9 @@ def longest_streaks(df):
     return top_days
 
 def text_length_analysis(selected_user, df):
+    # Filter out group notifications first
+    df = df[df['user'] != 'group_notification']
+    
     if selected_user != 'Overall':
         df = df[df['user'] == selected_user]
     
@@ -174,5 +209,66 @@ def text_length_analysis(selected_user, df):
     
     return avg_length
 
+def analyze_deleted_messages(df):
+    deleted_messages = df[df['message'].str.contains('This message was deleted', case=False, na=False)]
+    
+    # Count deletions per user
+    deletion_counts = deleted_messages['user'].value_counts().reset_index()
+    deletion_counts.columns = ['User', 'Deleted Messages']
+    
+    # Calculate percentage of total messages
+    total_messages = df.groupby('user')['message'].count()
+    deletion_percentages = (deleted_messages['user'].value_counts() / total_messages * 100).round(2)
+    deletion_counts['Deletion Rate (%)'] = deletion_counts['User'].map(deletion_percentages)
+    
+    return deletion_counts
+
+def analyze_group_dynamics(df):
+    # Check if it's a group chat (more than 2 users excluding group_notification)
+    unique_users = df[df['user'] != 'group_notification']['user'].nunique()
+    if unique_users <= 2:
+        return None, None, "This is not a group chat"
+
+    # Analyze mentions (@username)
+    mentions = []
+    mention_by = []
+    for _, row in df.iterrows():
+        message = row['message']
+        sender = row['user']
+        # Find all @mentions in the message
+        if '@' in message:
+            mentioned_users = [word.strip('@') for word in message.split() if word.startswith('@')]
+            for mentioned in mentioned_users:
+                mentions.append(mentioned)
+                mention_by.append(sender)
+
+    # Create mentions DataFrame
+    mentions_df = pd.DataFrame({
+        'Mentioned_by': mention_by,
+        'Mentioned_user': mentions
+    })
+    mentions_summary = mentions_df.groupby('Mentioned_by').size().reset_index(name='Mention_count')
+    mentions_summary = mentions_summary.sort_values('Mention_count', ascending=False)
+
+    # Analyze reply patterns
+    replies = []
+    for i in range(1, len(df)):
+        current_user = df.iloc[i]['user']
+        prev_user = df.iloc[i-1]['user']
+        if current_user != prev_user and current_user != 'group_notification' and prev_user != 'group_notification':
+            replies.append({
+                'From': current_user,
+                'To': prev_user
+            })
+
+    # Create reply patterns DataFrame
+    replies_df = pd.DataFrame(replies)
+    if not replies_df.empty:
+        reply_summary = replies_df.groupby(['From', 'To']).size().reset_index(name='Reply_count')
+        reply_summary = reply_summary.sort_values('Reply_count', ascending=False)
+    else:
+        reply_summary = pd.DataFrame(columns=['From', 'To', 'Reply_count'])
+
+    return mentions_summary, reply_summary, None
 
 
