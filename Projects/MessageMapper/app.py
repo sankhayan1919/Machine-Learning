@@ -6,7 +6,7 @@ import emoji
 
 # Set page configuration (must be the first Streamlit command)
 st.set_page_config(
-    page_title="MessageMapper",
+    page_title="MessageMetrics",
     page_icon="💬",
     layout="wide"
 )
@@ -97,7 +97,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.sidebar.markdown("# 💬 MessageMapper")
+st.sidebar.markdown("# 💬 MessageMetrics")
 
 uploaded_file = st.sidebar.file_uploader("Choose a file")
 if uploaded_file is not None:
@@ -142,13 +142,18 @@ if uploaded_file is not None:
             st.title(num_stickers)
 
         # Chat age and first message
-        chat_info = helper.get_chat_age(df)
+        if selected_user == 'Overall':
+            chat_info = helper.get_chat_age(df)
+        else:
+            chat_info = helper.get_user_first_message(selected_user, df)
+            
         st.title("📝 Chat Information")
         col1, col2 = st.columns(2)
         with col1:
             st.info(f"First Message Date: **{chat_info['first_message_date']}**")
         with col2:
-            st.info(f"Chat Age: **{chat_info['chat_age']}**")
+            if selected_user == 'Overall':
+                st.info(f"Chat Age: **{chat_info['chat_age']}**")
 
         st.title("💬 First Message")
         st.markdown(
@@ -162,6 +167,26 @@ if uploaded_file is not None:
             unsafe_allow_html=True
         )
 
+        # Voice Message Analysis
+        st.title("🎤 Voice Message Analysis")
+        voice_counts = helper.voice_message_analysis(selected_user, df)
+        
+        if not voice_counts.empty:
+            col1, col2 = st.columns(2)
+            with col1:
+                st.dataframe(voice_counts)
+            with col2:
+                fig, ax = plt.subplots(figsize=(10, 6))
+                width = 0.4 if selected_user != 'Overall' else 0.8
+                ax.bar(voice_counts['User'], voice_counts['Voice Message Count'], 
+                      width=width, color='#008080') #teal
+                ax.set_xlabel("User", fontsize=12)
+                ax.set_ylabel("Number of Voice Messages", fontsize=12)
+                plt.xticks(rotation='vertical' if len(user_list) > 3 else 'horizontal')
+                st.pyplot(fig)
+        else:
+            st.write("No voice messages found in the chat.")
+
         # Most Active Users
         if selected_user == 'Overall':
             st.title("👥 Most Active Users")
@@ -169,7 +194,7 @@ if uploaded_file is not None:
             fig, ax = plt.subplots()
             col1, col2 = st.columns(2)
             with col1:
-                ax.bar(x.index, x.values, color='#008080') #teal
+                ax.bar(x.index, x.values, color='#008080', width=0.8) #teal
                 plt.xticks(rotation='vertical' if len(user_list) > 3 else 'horizontal')
                 st.pyplot(fig)
             with col2:
@@ -177,13 +202,14 @@ if uploaded_file is not None:
         
          # Call Analysis
         st.title("📞 Call Analysis") 
-        call_data, call_message = helper.call_analysis(df)
+        call_data, call_message = helper.call_analysis(selected_user, df)
         if call_message:
             st.write(call_message)
         else:
             st.dataframe(call_data)
             fig, ax = plt.subplots()
-            ax.bar(call_data['Call Type'], call_data['Count'], color=['#39FF14', '#2a3439'])
+            width = 0.4 if selected_user != 'Overall' else 0.8
+            ax.bar(call_data['Call Type'], call_data['Count'], color=['#39FF14', '#2a3439'], width=width)
             ax.set_xlabel("Call Type", fontsize=12)
             ax.set_ylabel("Count", fontsize=12)
             ax.set_title("Number of Voice and Video Calls", fontsize=14)
@@ -199,7 +225,6 @@ if uploaded_file is not None:
         # emoji analysis
         st.title("😀 Emoji Analysis")   
         emoji_df = helper.emoji_helper(selected_user, df)   
-        st.title("Emoji Analysis") 
         col1, col2 = st.columns(2)
         if emoji_df.empty:
             st.write("No emojis found in the messages.")
@@ -257,24 +282,31 @@ if uploaded_file is not None:
 
         # response time analysis
         st.title("⚡ Response Time Analysis")      
-        response_times, fastest_responder = helper.response_time_analysis(df)
+        response_times, fastest_responder = helper.response_time_analysis(selected_user, df)
 
-        col1, col2 = st.columns(2)
-        with col1:
-            st.header("Average Response Time")
-            st.dataframe(response_times)
-        with col2:
-            st.header("Fastest Responder")
-            st.write(f"User: {fastest_responder['user']}")
-            st.write(f"Average Response Time: {fastest_responder['avg_response_time']:.2f} seconds")
+        if not response_times.empty:
+            col1, col2 = st.columns(2)
+            with col1:
+                st.header("Average Response Time")
+                st.dataframe(response_times)
+            with col2:
+                if fastest_responder is not None:
+                    st.header("Fastest Responder")
+                    st.write(f"User: {fastest_responder['user']}")
+                    st.write(f"Average Response Time: {fastest_responder['avg_response_time']:.2f} seconds")
+                else:
+                    st.header("Response Time Analysis")
+                    st.write("No fastest responder data available.")
+        else:
+            st.write("No response time data available for analysis.")
         
         # first message of the day
         st.title("🌅 First Message of the Day")  
-        first_message_counts = helper.first_message_of_day(df)
+        first_message_counts = helper.first_message_of_day(selected_user, df)
 
         if selected_user == 'Overall' and not first_message_counts.empty:
             fig, ax = plt.subplots(figsize=(10, 6))
-            ax.bar(first_message_counts['user'], first_message_counts['first_message_count'], width=0.4, color='#008080') #teal
+            ax.bar(first_message_counts['user'], first_message_counts['first_message_count'], width=0.8, color='#008080') #teal
             ax.set_xlabel("User", fontsize=12)
             ax.set_ylabel("First Message Count", fontsize=12)
             plt.xticks(rotation='vertical' if len(user_list) > 3 else 'horizontal')
@@ -286,11 +318,11 @@ if uploaded_file is not None:
         
         # late night activity
         st.title("🌙 Late Night Activity (12 AM - 3 AM)")   
-        late_night_counts = helper.late_night_activity(df)
+        late_night_counts = helper.late_night_activity(selected_user, df)
 
         if selected_user == 'Overall' and not late_night_counts.empty:
             fig, ax = plt.subplots(figsize=(10, 6))
-            ax.bar(late_night_counts['user'], late_night_counts['late_night_message_count'], width=0.4, color='#008080') #teal
+            ax.bar(late_night_counts['user'], late_night_counts['late_night_message_count'], width=0.8, color='#008080') #teal
             ax.set_xlabel("User", fontsize=12)
             ax.set_ylabel("No. of Messages", fontsize=12)
             plt.xticks(rotation='vertical' if len(user_list) > 3 else 'horizontal')
@@ -302,7 +334,7 @@ if uploaded_file is not None:
         
         # Longest Streaks Analysis
         st.title("🔥 Top 10 Days with Continuous Chat Activity")      
-        top_days = helper.longest_streaks(df)
+        top_days = helper.longest_streaks(selected_user,df)
 
         if not top_days.empty:
             fig, ax = plt.subplots(figsize=(10, 6))
@@ -321,18 +353,31 @@ if uploaded_file is not None:
         st.title("📏 Text Length Analysis")
         text_length_df = helper.text_length_analysis(selected_user, df)
         
-        if selected_user == 'Overall':
-            fig, ax = plt.subplots(figsize=(10, 6))
-            ax.bar(text_length_df['User'], text_length_df['Average Message Length'], width=0.4, color='#008080') #teal
-            ax.set_xlabel("User")
-            ax.set_ylabel("Average Message Length (characters)")
-            plt.xticks(rotation='vertical' if len(user_list) > 3 else 'horizontal')
-            st.pyplot(fig)
-        
+        if not text_length_df.empty:
+            if selected_user == 'Overall':
+                fig, ax = plt.subplots(figsize=(10, 6))
+                ax.bar(text_length_df['User'], text_length_df['Average Message Length'], width=0.8, color='#008080') #teal
+                ax.set_xlabel("User")
+                ax.set_ylabel("Average Message Length (characters)")
+                plt.xticks(rotation='vertical' if len(user_list) > 3 else 'horizontal')
+                st.pyplot(fig)
+            else:
+                # For individual user, show a metric display instead of bar chart
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric(
+                        label="Average Message Length",
+                        value=f"{text_length_df['Average Message Length'].iloc[0]:.1f} characters",
+                        help="Average number of characters per message"
+                    )
+                with col2:
+                    st.dataframe(text_length_df)
+        else:
+            st.write("No text length data available for analysis.")
 
         # Message Deletion Analysis
         st.title("🗑️ Message Deletion Analysis")
-        deletion_stats = helper.analyze_deleted_messages(df)
+        deletion_stats = helper.analyze_deleted_messages(selected_user, df)
         
         if not deletion_stats.empty:
             col1, col2 = st.columns(2)
@@ -340,8 +385,9 @@ if uploaded_file is not None:
                 st.dataframe(deletion_stats)
             with col2:
                 fig, ax = plt.subplots(figsize=(10, 6))
+                width = 0.4 if selected_user != 'Overall' else 0.8
                 ax.bar(deletion_stats['User'], deletion_stats['Deleted Messages'], 
-                      width=0.4, color='#008080') #teal
+                      width=width, color='#008080') #teal
                 ax.set_xlabel("User", fontsize=12)
                 ax.set_ylabel("Number of Deleted Messages", fontsize=12)
                 plt.xticks(rotation='vertical' if len(user_list) > 3 else 'horizontal')
@@ -357,7 +403,7 @@ if uploaded_file is not None:
 
         # Group Dynamics Analysis
         st.title("💭 Group Dynamics Analysis")
-        mentions_summary, reply_summary, group_message = helper.analyze_group_dynamics(df)
+        mentions_summary, reply_summary, group_message = helper.analyze_group_dynamics(selected_user, df)
         
         if group_message:
             st.write(group_message)
@@ -370,8 +416,9 @@ if uploaded_file is not None:
                     st.dataframe(mentions_summary)
                 with col2:
                     fig, ax = plt.subplots(figsize=(10, 6))
+                    width = 0.4 if selected_user != 'Overall' else 0.8
                     ax.bar(mentions_summary['Mentioned_by'], mentions_summary['Mention_count'], 
-                          color='#4B0082')  # indigo
+                          color='#4B0082', width=width)  # indigo
                     plt.xticks(rotation='vertical')
                     ax.set_xlabel("User")
                     ax.set_ylabel("Number of Mentions Made")

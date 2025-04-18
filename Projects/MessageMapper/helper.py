@@ -25,16 +25,30 @@ def fetch_stats(selected_user,df):
     return num_messages, len(words), num_media_messages, len(links), emojis, stickers
 
 def get_chat_age(df):
+    # First, remove group notifications
     df_filtered = df[df['user'] != 'group_notification']
     
-    # Sort the DataFrame by date in ascending order and get the first row
-    df_sorted = df_filtered.sort_values('date')
+    # Sort by date in ascending order to get the earliest message
+    df_sorted = df_filtered.sort_values('date', ascending=True)
+    
+    # Get the first message details
     first_message_row = df_sorted.iloc[0]
     first_message_date = first_message_row['date']
     first_message_text = first_message_row['message']
     first_message_user = first_message_row['user']
     
-    # Rest of the function remains the same
+    # Check if the first message is a non-text message
+    non_text_patterns = [
+        'voice message', 'audio', 'voice note', 'voice recording', 'voice clip', 'voice memo', 'voice file', 'voice msg',
+        '<media omitted>', 'image omitted', 'video omitted', 'document omitted', 'sticker omitted',
+        'voice call', 'video call', 'missed voice call', 'missed video call',
+        'GIF omitted', 'location omitted', 'contact omitted', 'file omitted'
+    ]
+    
+    if any(pattern.lower() in first_message_text.lower() for pattern in non_text_patterns):
+        first_message_text = "It's a media message (voice message, call, image, video, etc.)"
+    
+    # Calculate chat age
     current_date = pd.Timestamp.now()
     chat_age = current_date - first_message_date
     
@@ -57,12 +71,88 @@ def get_chat_age(df):
         'first_message_user': first_message_user
     }
 
+def get_user_first_message(selected_user, df):
+    # Filter for the selected user
+    df_user = df[df['user'] == selected_user]
+    
+    # Remove group notifications
+    df_user = df_user[df_user['user'] != 'group_notification']
+    
+    if df_user.empty:
+        return {
+            'first_message_date': "No messages found",
+            'first_message': "No messages found",
+            'first_message_user': selected_user
+        }
+    
+    # Sort by date in ascending order to get the earliest message
+    df_sorted = df_user.sort_values('date', ascending=True)
+    
+    # Get the first message details
+    first_message_row = df_sorted.iloc[0]
+    first_message_date = first_message_row['date']
+    first_message_text = first_message_row['message']
+    
+    # Check if the first message is a non-text message
+    non_text_patterns = [
+        'voice message', 'audio', 'voice note', 'voice recording', 'voice clip', 'voice memo', 'voice file', 'voice msg',
+        '<media omitted>', 'image omitted', 'video omitted', 'document omitted', 'sticker omitted',
+        'voice call', 'video call', 'missed voice call', 'missed video call',
+        'GIF omitted', 'location omitted', 'contact omitted', 'file omitted'
+    ]
+    
+    if any(pattern.lower() in first_message_text.lower() for pattern in non_text_patterns):
+        first_message_text = "It's a media message (voice message, call, image, video, etc.)"
+    
+    return {
+        'first_message_date': first_message_date.strftime('%d %B %Y'),
+        'first_message': first_message_text,
+        'first_message_user': selected_user
+    }
+
+def voice_message_analysis(selected_user, df):
+    if selected_user != 'Overall':
+        df = df[df['user'] == selected_user]
+        
+    # Filter messages containing various voice message patterns
+    voice_patterns = [
+        'voice message',
+        'audio',
+        'voice note',
+        'voice recording',
+        'voice clip',
+        'voice memo',
+        'voice file',
+        'voice msg',
+        'voice msg.',
+        'voice msg:',
+        'voice message:',
+        'voice note:',
+        'voice recording:',
+        'voice clip:',
+        'voice memo:',
+        'voice file:'
+    ]
+    
+    # Create a pattern string for case-insensitive matching
+    pattern = '|'.join(voice_patterns)
+    voice_messages = df[df['message'].str.contains(pattern, case=False, na=False)]
+    
+    # Count voice messages per user
+    voice_counts = voice_messages['user'].value_counts().reset_index()
+    voice_counts.columns = ['User', 'Voice Message Count']
+    
+    return voice_counts
+
 def most_active_users(df):
     x = df['user'].value_counts().head(5)    #fetch top 5 active users
     df = round((df['user'].value_counts() / df.shape[0]) * 100, 2).reset_index().rename(columns={'user': 'name', 'count': 'percent'})
     return x, df
 
-def call_analysis(df):
+def call_analysis(selected_user, df):
+    if selected_user != 'Overall':
+        df = df[df['user'] == selected_user]
+        
     # Filter messages containing "voice call" or "video call"
     voice_calls = df[df['message'].str.contains('voice call', case=False, na=False)]
     video_calls = df[df['message'].str.contains('video call', case=False, na=False)]
@@ -137,7 +227,10 @@ def activity_heatmap(selected_user, df):
     heatmap = df.pivot_table(index='day_name', columns='period', values='message', aggfunc='count').fillna(0)
     return heatmap  # Create a pivot table for heatmap
 
-def response_time_analysis(df):
+def response_time_analysis(selected_user, df):
+    if selected_user != 'Overall':
+        df = df[df['user'] == selected_user]
+        
     df = df[df['user'] != 'group_notification']
 
     # Calculate time difference between consecutive messages
@@ -149,16 +242,33 @@ def response_time_analysis(df):
     # Filter rows where the user is replying to someone else
     df = df[df['user'] != df['prev_user']]
 
+    # Remove any rows with NaN values in time_diff
+    df = df.dropna(subset=['time_diff'])
+
+    # If no valid response times found
+    if df.empty:
+        return pd.DataFrame(columns=['user', 'avg_response_time']), None
+
     # Group by user and calculate average response time
     response_times = df.groupby('user')['time_diff'].mean().reset_index()
     response_times.rename(columns={'time_diff': 'avg_response_time'}, inplace=True)
 
-    # Identify the fastest responder
-    fastest_responder = response_times.loc[response_times['avg_response_time'].idxmin()]
+    # If no valid response times after grouping
+    if response_times.empty:
+        return pd.DataFrame(columns=['user', 'avg_response_time']), None
+
+    # Find the fastest responder only if we have valid data
+    try:
+        fastest_responder = response_times.loc[response_times['avg_response_time'].idxmin()]
+    except:
+        return response_times, None
 
     return response_times, fastest_responder
 
-def first_message_of_day(df):
+def first_message_of_day(selected_user, df):
+    if selected_user != 'Overall':
+        df = df[df['user'] == selected_user]
+        
     # Remove group notifications
     df = df[df['user'] != 'group_notification']
     # Extract the date part of the timestamp
@@ -173,7 +283,10 @@ def first_message_of_day(df):
 
     return first_message_counts
 
-def late_night_activity(df):
+def late_night_activity(selected_user, df):
+    if selected_user != 'Overall':
+        df = df[df['user'] == selected_user]
+        
     # Remove group notifications
     df = df[df['user'] != 'group_notification']
     # Filter messages sent between 12 AM and 3 AM
@@ -185,7 +298,10 @@ def late_night_activity(df):
 
     return late_night_counts
 
-def longest_streaks(df):
+def longest_streaks(selected_user, df):
+    if selected_user != 'Overall':
+        df = df[df['user'] == selected_user]
+        
     # Group messages by date and count the number of messages for each day
     daily_activity = df.groupby('only_date').size().reset_index(name='message_count')
 
@@ -195,21 +311,34 @@ def longest_streaks(df):
     return top_days
 
 def text_length_analysis(selected_user, df):
-    # Filter out group notifications first
-    df = df[df['user'] != 'group_notification']
-    
     if selected_user != 'Overall':
         df = df[df['user'] == selected_user]
     
+    # Filter out group notifications
+    df = df[df['user'] != 'group_notification']
+    
+    if df.empty:
+        return pd.DataFrame(columns=['User', 'Average Message Length'])
+    
     # Calculate average message length for each user
-    avg_length = df.groupby('user')['message'].apply(
-        lambda x: sum(len(msg) for msg in x) / len(x)
-    ).reset_index()
-    avg_length.columns = ['User', 'Average Message Length']
+    if selected_user == 'Overall':
+        avg_length = df.groupby('user')['message'].apply(
+            lambda x: sum(len(msg) for msg in x) / len(x)
+        ).reset_index()
+        avg_length.columns = ['User', 'Average Message Length']
+    else:
+        # For individual user, calculate their average message length
+        avg_length = pd.DataFrame({
+            'User': [selected_user],
+            'Average Message Length': [sum(len(msg) for msg in df['message']) / len(df['message'])]
+        })
     
     return avg_length
 
-def analyze_deleted_messages(df):
+def analyze_deleted_messages(selected_user, df):
+    if selected_user != 'Overall':
+        df = df[df['user'] == selected_user]
+        
     deleted_messages = df[df['message'].str.contains('This message was deleted', case=False, na=False)]
     
     # Count deletions per user
@@ -223,7 +352,10 @@ def analyze_deleted_messages(df):
     
     return deletion_counts
 
-def analyze_group_dynamics(df):
+def analyze_group_dynamics(selected_user, df):
+    if selected_user != 'Overall':
+        df = df[df['user'] == selected_user]
+        
     # Check if it's a group chat (more than 2 users excluding group_notification)
     unique_users = df[df['user'] != 'group_notification']['user'].nunique()
     if unique_users <= 2:
