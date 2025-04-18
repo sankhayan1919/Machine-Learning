@@ -17,7 +17,7 @@ MessageMapper is a powerful WhatsApp chat analysis tool that provides detailed i
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/MessageMapper.git
+git clone https://github.com/sankhayan1919/Machine-Learning/tree/main/Projects/MessageMapper
 cd MessageMapper
 ```
 
