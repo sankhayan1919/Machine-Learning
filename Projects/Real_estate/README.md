@@ -18,4 +18,4 @@ This project utilizes machine learning techniques to predict real estate prices 
 ### Setup
 1. Clone the repository:
 ```bash
-git clone https://github.com/sankhayan1919/Machine-Learning/tree/main/Projects/Real_estate
+git clone https://github.com/sankhayan1919/Machine-Learning/tree/main/Projects/Real_estate 
